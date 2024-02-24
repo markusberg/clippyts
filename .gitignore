@@ -2,6 +2,7 @@
 *.iml
 *.log*
 /dist
+/dist-agents
 node_modules
 .vscode/settings.json
 /dist-tsc

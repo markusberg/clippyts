@@ -1,210 +1,233 @@
-import { AgentConfig, AgentWrapper, ClippyAnimation, ClippyFrame } from './types';
-
+import {
+  AgentConfig,
+  AgentSound,
+  AgentType,
+  AgentWrapper,
+  AgentAnimation,
+  Frame,
+  FrameImage,
+} from './agents/types.js'
 
 export default class Animator {
-    public static States = { WAITING: 1, EXITED: 0 };
+  public static States = { WAITING: 1, EXITED: 0 }
 
-    private _el: HTMLElement;
-    private _data: AgentConfig;
-    private _currentFrameIndex: number;
-    private _path: string;
-    private _exiting: boolean;
-    private _currentFrame?: ClippyFrame;
-    private _started: boolean;
-    private _sounds: Record<string, HTMLAudioElement>;
-    private _overlays: HTMLElement[];
-    private _endCallback?: Function;
-    private _currentAnimation?: ClippyAnimation;
-    private _loop?: number;
+  private _data: AgentConfig
+  private _name: AgentType
+  private _currentFrameIndex: number = 0
+  private _path: string
+  private _exiting: boolean = false
+  private _currentFrame?: Frame = undefined
+  private _started: boolean = false
+  private _sounds: Record<string, HTMLAudioElement>
+  private _overlays: HTMLElement[] = []
+  private _endCallback?: Function = undefined
 
-    public currentAnimationName: string | undefined;
+  private _currentAnimation?: AgentAnimation = undefined
+  public currentAnimationName: string | undefined = undefined
+  private _loop?: number
 
-    constructor (el: HTMLElement, config: AgentWrapper, sounds: Array<string>) {
-        this._el = el;
-        this._data = config.config;
-        this._path = config.image;
-        this._currentFrameIndex = 0;
-        this._currentFrame = undefined;
-        this._exiting = false;
-        this._currentAnimation = undefined;
-        this._endCallback = undefined;
-        this._started = false;
-        this._sounds = {};
-        this.currentAnimationName = undefined;
-        this.preloadSounds(sounds);
-        this._overlays = [this._el];
-        let curr = this._el;
+  constructor(
+    private _el: HTMLElement,
+    config: AgentWrapper,
+  ) {
+    this._name = config.name
+    this._data = config.config
+    this._path = config.path
+    this._sounds = this.preloadSounds(config.sound)
 
-        this._setupElement(this._el);
-        for (let i = 1; i < this._data.overlayCount; i++) {
-            const divEl = document.createElement('div');
-            let inner = this._setupElement(divEl);
-            curr.append(inner);
-            this._overlays.push(inner);
-            curr = inner;
-        }
+    const size = this._data.framesize
+    const container = [
+      `display: block`,
+      `width: ${size[0]}px`,
+      `height: ${size[1]}px`,
+    ].join(';')
+    this._el.setAttribute('style', container)
+    let current = this._el
+
+    for (let i = 0; i < this._data.overlayCount; i++) {
+      const inner = this._setupElement(document.createElement('div'), size)
+      current.append(inner)
+      this._overlays.push(inner)
+      current = inner
+    }
+  }
+
+  private _setupElement(el: HTMLElement, size: FrameImage) {
+    const style = [
+      'display: none',
+      `width: ${size[0]}px`,
+      `height: ${size[1]}px`,
+      `background: url('${this._path}/${this._name}/map.png') no-repeat`,
+    ].join(';')
+    el.setAttribute('style', style)
+
+    return el
+  }
+
+  get animations(): string[] {
+    return Object.keys(this._data.animations).sort()
+  }
+
+  private preloadSounds(sounds: AgentSound): Record<string, HTMLAudioElement> {
+    const preloaded: Record<string, HTMLAudioElement> = {}
+    for (const key in sounds) {
+      const uri = sounds[key]
+      preloaded[key] = new Audio(uri)
+    }
+    return preloaded
+  }
+
+  hasAnimation(name: string) {
+    return !!this._data.animations[name]
+  }
+
+  exitAnimation() {
+    this._exiting = true
+  }
+
+  /**
+   * Is the currently running animation an idle animation?
+   * @returns
+   */
+  isIdle(): boolean {
+    return this.currentAnimationName?.includes('Idle') || false
+  }
+
+  showAnimation(animationName: string, stateChangeCallback: Function) {
+    this._exiting = false
+
+    if (!this.hasAnimation(animationName)) {
+      return false
     }
 
-    private _setupElement (el: HTMLElement) {
-        let frameSize = this._data.framesize;
-        el.style.display = "none";
-        el.style.width = frameSize[0] + "px";
-        el.style.height = frameSize[1] + "px";
-        el.style.background = "url('" + this._path + "') no-repeat";
-        
-        return el;
+    this._currentAnimation = this._data.animations[animationName]
+    this.currentAnimationName = animationName
+
+    if (!this._started) {
+      this._step()
+      this._started = true
     }
 
-    animations () {
-        let r = [];
-        let d = this._data.animations;
-        for (let n in d) {
-            r.push(n);
-        }
-        return r;
+    this._currentFrameIndex = 0
+    this._currentFrame = undefined
+    this._endCallback = stateChangeCallback
+
+    return true
+  }
+
+  private _draw(images: FrameImage[] | undefined) {
+    if (!images) {
+      return
     }
 
-    preloadSounds (sounds: Array<string>) {
+    this._overlays.forEach((overlay, idx) => {
+      if (idx < images.length) {
+        const xy = images[idx]
+        const position = `-${xy[0]}px -${xy[1]}px`
+        overlay.style['display'] = 'block'
+        overlay.style['background-position' as any] = position
+      } else {
+        overlay.style['display'] = 'none'
+      }
+    })
+  }
 
-        // for (let i = 0; i < this._data.sounds.length; i++) {
-        //     let snd: string = this._data.sounds[i];
-        //     let uri = sounds[snd];
-        //     if (!uri) continue;
-        //     this._sounds[snd] = new Audio(uri);
+  private _getNextAnimationFrame(): number {
+    if (!this._currentAnimation) return 0
+    // No current frame. start animation.
+    if (!this._currentFrame) return 0
+    let currentFrame = this._currentFrame
+    let branching = this._currentFrame.branching
 
-        // }
-    }
-
-    hasAnimation (name: string) {
-        return !!this._data.animations[name];
-    }
-
-    exitAnimation () {
-        this._exiting = true;
-    }
-
-    showAnimation (animationName: string, stateChangeCallback: Function) {
-        this._exiting = false;
-
-        if (!this.hasAnimation(animationName)) {
-            return false;
-        }
-
-        this._currentAnimation = this._data.animations[animationName];
-        this.currentAnimationName = animationName;
-
-
-        if (!this._started) {
-            this._step();
-            this._started = true;
-        }
-
-        this._currentFrameIndex = 0;
-        this._currentFrame = undefined;
-        this._endCallback = stateChangeCallback;
-
-        return true;
-    }
-
-    private _draw () {
-        let images: Array<Array<number>> = [];
-        if (this._currentFrame) images = this._currentFrame.images || [];
-
-        for (let i = 0; i < this._overlays.length; i++) {
-            if (i < images.length) {
-                let xy = images[i];
-                let bg = -xy[0] + 'px ' + -xy[1] + 'px';
-                this._overlays[i].style.backgroundPosition = bg;
-                this._overlays[i].style.display = 'block';
-            }
-            else {
-                this._overlays[i].style.display = 'none';
-            }
-
-        }
-    }
-
-    private _getNextAnimationFrame (): number {
-        if (!this._currentAnimation) return 0;
-        // No current frame. start animation.
-        if (!this._currentFrame) return 0;
-        let currentFrame = this._currentFrame;
-        let branching = this._currentFrame.branching;
-
-
-        if (this._exiting && currentFrame.exitBranch !== undefined) {
-            return currentFrame.exitBranch;
-        }
-        else if (branching) {
-            let rnd = Math.random() * 100;
-            for (let i = 0; i < branching.branches.length; i++) {
-                let branch = branching.branches[i];
-                if (rnd <= branch.weight) {
-                    return branch.frameIndex;
-                }
-
-                rnd -= branch.weight;
-            }
+    if (this._exiting && currentFrame.exitBranch !== undefined) {
+      return currentFrame.exitBranch
+    } else if (branching) {
+      let rnd = Math.random() * 100
+      for (let i = 0; i < branching.branches.length; i++) {
+        let branch = branching.branches[i]
+        if (rnd <= branch.weight) {
+          return branch.frameIndex
         }
 
-        return this._currentFrameIndex + 1;
+        rnd -= branch.weight
+      }
     }
 
+    return this._currentFrameIndex + 1
+  }
 
-    private _playSound () {
-        let s = this._currentFrame?.sound;
-        if (!s) return;
-        let audio = this._sounds[s];
-        if (audio) audio.play();
+  /**
+   * Play the provided sound, if it exists
+   * @param id
+   */
+  private _playSound(id: string | undefined) {
+    if (id) {
+      const audio = this._sounds[id]
+      if (audio) {
+        console.log(`${this._name}: ${id}`)
+        audio.play()
+      }
+    }
+  }
+
+  private _render(frame: Frame) {
+    this._draw(frame.images)
+    this._playSound(frame.sound)
+  }
+
+  private _atLastFrame() {
+    if (!this._currentAnimation) return false
+    return this._currentFrameIndex >= this._currentAnimation.frames.length - 1
+  }
+
+  private _step() {
+    if (!this._currentAnimation) {
+      return
+    }
+    const newFrameIndex = Math.min(
+      this._getNextAnimationFrame(),
+      this._currentAnimation.frames.length - 1,
+    )
+    const frameChanged =
+      !this._currentFrame || this._currentFrameIndex !== newFrameIndex
+    this._currentFrameIndex = newFrameIndex
+
+    // always switch frame data, unless we're at the last frame of an animation with a useExitBranching flag.
+    if (!(this._atLastFrame() && this._currentAnimation.useExitBranching)) {
+      this._currentFrame =
+        this._currentAnimation.frames[this._currentFrameIndex]
     }
 
-    private _atLastFrame () {
-        if (!this._currentAnimation) return false;
-        return this._currentFrameIndex >= this._currentAnimation.frames.length - 1;
+    if (this._currentFrame) {
+      this._render(this._currentFrame)
     }
 
+    this._loop = window.setTimeout(
+      this._step.bind(this),
+      this._currentFrame!.duration,
+    )
 
-    private _step () {
-        if (!this._currentAnimation) return;
-        let newFrameIndex = Math.min(this._getNextAnimationFrame(), this._currentAnimation.frames.length - 1);
-        let frameChanged = !this._currentFrame || this._currentFrameIndex !== newFrameIndex;
-        this._currentFrameIndex = newFrameIndex;
-
-        // always switch frame data, unless we're at the last frame of an animation with a useExitBranching flag.
-        if (!(this._atLastFrame() && this._currentAnimation.useExitBranching)) {
-            this._currentFrame = this._currentAnimation.frames[this._currentFrameIndex];
-        }
-
-        this._draw();
-        this._playSound();
-
-        this._loop = window.setTimeout(this._step.bind(this), this._currentFrame!.duration);
-
-
-        // fire events if the frames changed and we reached an end
-        if (this._endCallback && frameChanged && this._atLastFrame()) {
-            if (this._currentAnimation.useExitBranching && !this._exiting) {
-                this._endCallback(this.currentAnimationName, Animator.States.WAITING);
-            }
-            else {
-                this._endCallback(this.currentAnimationName, Animator.States.EXITED);
-            }
-        }
+    // fire events if the frames changed and we reached an end
+    if (this._endCallback && frameChanged && this._atLastFrame()) {
+      if (this._currentAnimation.useExitBranching && !this._exiting) {
+        this._endCallback(this.currentAnimationName, Animator.States.WAITING)
+      } else {
+        this._endCallback(this.currentAnimationName, Animator.States.EXITED)
+      }
     }
+  }
 
-    /***
-     * Pause animation execution
-     */
-    pause () {
-        window.clearTimeout(this._loop);
-    }
+  /***
+   * Pause animation execution
+   */
+  pause() {
+    window.clearTimeout(this._loop)
+  }
 
-    /***
-     * Resume animation
-     */
-    resume () {
-        this._step();
-    }
+  /***
+   * Resume animation
+   */
+  resume() {
+    this._step()
+  }
 }
-
-

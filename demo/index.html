@@ -1,27 +1,35 @@
+<!doctype html>
+
 <html>
-<head>
+  <head>
+    <title>ClippyTS demo</title>
     <style>
-        html {
-            background: url('http://wallpapercave.com/wp/7VNksl0.jpg') no-repeat center center fixed;
-            -webkit-background-size: cover;
-            -moz-background-size: cover;
-            -o-background-size: cover;
-            background-size: cover;
-        }
+      html {
+        background: url('http://wallpapercave.com/wp/7VNksl0.jpg') no-repeat
+          center center fixed;
+        background-size: cover;
+      }
 
-        #next-agent {
-            font-size: 1.5em;
-        }
+      .my-clippy {
+        padding-top: 100px;
+      }
 
-        .my-clippy {
-            padding-top: 100px;
-        }
-
+      #demo-area {
+        visibility: hidden;
+      }
     </style>
-</head>
-<body>
-<script src="./demo.js" type="module"></script>
-<button id="next-agent">Random agent</button>
-<div class="my-clippy"></div>
-</body>
+    <link rel="stylesheet" href="/dist/clippy.css" />
+  </head>
+  <body>
+    <script src="./demo.js" type="module"></script>
+    <button id="start-button">Click to start</button>
+
+    <div id="demo-area">
+      <button id="agent-next">Random agent</button>
+      <button id="agent-speak">Speak</button>
+      <div id="animations"></div>
+
+      <div id="my-clippy"></div>
+    </div>
+  </body>
 </html>
